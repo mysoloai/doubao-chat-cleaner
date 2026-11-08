@@ -4,7 +4,7 @@
 年龄判定顺序（越靠前越可信）：
   1) 本地工作区 `.../agent_mode/workspace/.sessions/<会话id>` 的目录修改时间
   2) 归档区 `_archive/sessions-*/manifest.tsv` 里的 `last_modified`
-  3) 两者都没有 → 视为「未知年龄」，**默认保留**（无法判断新旧，不乱动），--include-unknown 才归档
+  3) 两者都没有 → 视为「未知年龄」，**默认一并归档**（网页端新建的会话本来就没本地痕迹），--keep-unknown 才保留
 
 依赖 opencli 2.x + 已登录 doubao.com 的 Chrome/Browser Bridge。
 
@@ -12,7 +12,7 @@
   python3 scripts/doubao_web_archive.py --dry-run          # 只统计，不动手
   python3 scripts/doubao_web_archive.py                    # 归档 30 天前的会话
   python3 scripts/doubao_web_archive.py --days 90
-  python3 scripts/doubao_web_archive.py --include-unknown  # 连年龄未知的一起归档
+  python3 scripts/doubao_web_archive.py --keep-unknown     # 保留年龄未知的
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ STATE_FILE = Path.home() / ".local/share/doubao-chat-cleaner/web_archived.json"
 KEEP_FILE = Path.home() / ".local/share/doubao-chat-cleaner/web_keep.json"
 
 BATCH_SIZE = 25
-MAX_EXPAND_ROUNDS = 8
+MAX_EXPAND_ROUNDS = 3
 
 OPERATE_TYPE_ARCHIVE = 8
 API_BASE = "https://www.doubao.com/im/conversation/batch_operate"
@@ -215,8 +215,9 @@ def main() -> int:
     ap.add_argument("--no-ui-fallback", action="store_true",
                     help="不改用界面菜单兜底归档（默认会兜底接口假成功的会话）")
     ap.add_argument("--ui-limit", type=int, default=6, help="每轮界面兜底最多处理几条")
-    ap.add_argument("--include-unknown", action="store_true",
-                    help="连年龄未知的会话一起归档（默认保留，因为无法判断新旧）")
+    ap.add_argument("--keep-unknown", action="store_true",
+                    help="保留年龄未知的会话（默认是一并归档）")
+    ap.add_argument("--include-unknown", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--session", default="doubao-web-archive", help="opencli 会话名")
     ap.add_argument("--keep", action="append", default=[], help="始终保留的会话 id，可重复")
     ap.add_argument("--limit", type=int, default=0, help="本次最多归档多少条（0 = 不限）")
@@ -230,7 +231,7 @@ def main() -> int:
     bw = Browser(opencli, args.session)
     # 加时间戳强制重新加载，否则复用的旧标签页会一直显示上一次的（残缺）侧栏
     bw.open(f"https://www.doubao.com/chat?t={int(time.time())}")
-    time.sleep(7)
+    time.sleep(4)
 
     for _ in range(MAX_EXPAND_ROUNDS):
         n = bw.eval(EXPAND_JS)
@@ -283,7 +284,7 @@ def main() -> int:
     log(f"可见 {len(items)} 条：待归档 {len(targets)}、"
         f"最近 {args.days} 天内 {len(fresh)}、年龄未知 {len(unknown)}、"
         f"已归档过仍显示 {len(stuck)}")
-    if args.include_unknown:
+    if not args.keep_unknown:
         targets.extend((it, None) for it in unknown)
         log(f"含未知年龄后待归档 {len(targets)} 条")
 
@@ -337,7 +338,7 @@ def main() -> int:
     if not args.dry_run and not args.no_ui_fallback and ok:
         # 回读 DOM：接口返回 success 的会话里，仍在侧栏的就是"假成功"，改走界面菜单
         bw.open(f"https://www.doubao.com/chat?t={int(time.time())}")
-        time.sleep(6)
+        time.sleep(4)
         still = collect() or []
         visible = {i["id"] for i in still}
         done = [c[0]["id"] for c in targets]

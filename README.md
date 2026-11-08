@@ -11,10 +11,14 @@
 | 能力 | 命令 | 说明 |
 |---|---|---|
 | 本地瘦身 | `bash scripts/clean_local.sh [--dry-run]` | 清 Python 沙箱缓存、滚动日志、Electron 缓存；旧会话工作区移到 `_archive/`（可回移） |
-| 归档历史会话 | `python3 scripts/doubao_web_archive.py [--dry-run]` | 默认归档 **30 天前**的会话；年龄未知的**默认保留**，加 `--include-unknown` 才一并归档 |
+| 归档历史会话 | `python3 scripts/doubao_web_archive.py [--dry-run]` | 默认归档 **30 天前**的会话；年龄未知的**默认一并归档**，要保留就加 `--keep-unknown` |
+| 归档到干净 | `bash scripts/doubao_web_archive_all.sh [天数]` | 反复下探直到侧栏只剩「最近 N 天内 + 当前会话」；每轮侧栏只露 ~10 条，单跑挖不到底 |
 | 撤销归档 | `python3 scripts/doubao_web_restore.py --project <项目名>` | 整项目恢复；`--conversation-id <id>` 单条恢复；`--list` 看各项目已归档条数 |
 | 每日定时 | `bash scripts/install_schedule.sh` | launchd 每日定时清理 + 归档（默认 04:10） |
 | 依赖安装 | `bash scripts/install_deps.sh` | 检查/安装 Node、opencli，并打印浏览器扩展安装指引 |
+
+> 注意：「年龄未知默认归档」意味着**只在网页端建过、桌面端没打开过**的会话会被一并归档（即使它是今天新建的）。
+> 想保住这类会话，加 `--keep-unknown`，或在桌面端点开一次让它留下本地痕迹。
 
 安全边界：**不动聊天内容本身，不动登录态**。归档 = 服务端置为归档态（数据仍在，可恢复）；恢复 = 取消归档。
 唯一"删"的是可再生的缓存、滚动日志，以及你自己设置的 N 天前本地会话工作区（移进归档目录，不是删除）。

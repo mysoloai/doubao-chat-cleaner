@@ -1,7 +1,7 @@
 ---
 name: doubao-chat-cleaner
 display_name: 豆包会话清理与归档
-version: "1.0.0"
+version: "1.1.0"
 description: 清理豆包 macOS 桌面端缓存与日志、批量归档网页版(doubao.com)历史会话、把已归档会话恢复回来、可安装每日定时清理。触发词：「豆包卡顿」「豆包清理」「豆包瘦身」「清豆包缓存」「归档豆包会话」「归档三个月前的会话」「撤销归档」「恢复豆包会话」「把XX项目的会话恢复回来」「每天自动清理豆包」。不用于：整机磁盘清理（用通用磁盘清理技能）、豆包技能管理、账号与会员问题。
 allowed-tools:
   - Bash
@@ -39,13 +39,20 @@ bash scripts/clean_local.sh --archive-session-days 30
 
 ```bash
 python3 scripts/doubao_web_archive.py --dry-run            # 默认 30 天口径
-python3 scripts/doubao_web_archive.py --days 90
-python3 scripts/doubao_web_archive.py --include-unknown    # 连年龄未知的一起归档
+python3 scripts/doubao_web_archive.py --days 7             # 只归档 7 天前的
+python3 scripts/doubao_web_archive.py --keep-unknown       # 保留年龄未知的
 python3 scripts/doubao_web_archive.py --keep <会话id>      # 强制保留
+bash scripts/doubao_web_archive_all.sh 30                   # 清到底：反复下探直到无进展
 ```
 
-**默认口径**：只归档 30 天前活跃的会话；**年龄未知的默认保留**（网页端接口不给时间，判断不了新旧就别动）。
-用户明确要"都清掉"时再加 `--include-unknown`。
+**默认口径**：只归档 30 天前活跃的会话；**年龄未知的默认一并归档**（纯网页端建的会话本来就没有本地痕迹），
+要保留加 `--keep-unknown`；想更激进/更保守就改 `--days`。
+
+⚠️ **未知年龄默认归档的副作用**：只在网页端新建、桌面端从没打开过的会话判不出年龄，会被一并归档（哪怕它是今天刚建的）。
+如果你的用法是"每天在网页上新开对话"，请加 `--keep-unknown`，或把这些会话在桌面端点开一次（本地就有了 `.sessions/<id>` 目录，年龄可判）。
+
+**要"清干净"就用 `doubao_web_archive_all.sh`**：侧栏每轮只渲染约 10 条（其中约 6 条可归档），清掉立刻补进更早的一页，
+单跑一次脚本永远挖不到底。驱动脚本按「连续无进展」判停机，可放心后台跑。
 
 ## Step 3：撤销归档（恢复会话）
 
@@ -85,7 +92,9 @@ bash scripts/install_schedule.sh --uninstall
   uplink 必须带 `{limit:N}`，传空对象直接 `712010202 参数错误`。
 - **归档态判定只有一条可靠口径**：`/im/conversation/batch_get`（cmd 1111）的 `status`，1=正常、8=已归档。
 - **恢复后必须写白名单**：否则下次归档任务会把刚恢复的会话又收回去。
-- **会话历史很深**：清掉一屏立刻补进更早的一屏，单轮只挖得到 10–20 条；归档脚本支持 `--limit`/多轮跑。
-- **少数会话接口假成功**（系统通知类）：`success:true` 但侧栏照旧，属服务端行为，不必反复重试。
+- **会话历史很深**：清掉一屏立刻补进更早的一屏，单轮只挖得到 10–20 条，要清到底请用 `scripts/doubao_web_archive_all.sh`（实测一次从 1428 条推到 1629 条并收敛）。
+- **少数会话接口假成功**（系统通知类 / 部分老会话）：`batch_operate` 回 `success:true` 但侧栏照旧。脚本已内置兜底——回读 DOM 发现仍在，就走界面「头部更多 → 归档」（`--no-ui-fallback` 可关，`--ui-limit` 控量；这类会话界面点掉真的会消失）。
+- **复用旧标签页会读到残缺侧栏**：反复 open 同一 URL 时页面不重载，会误判「只剩 1 条」。脚本已内置 URL 时间戳强刷 + 少于 2 条时隔 4 秒复查。
+- **渲染等待 4 秒够用**：打开后等 4s（原 7s）、展开最多 3 轮（原 8 轮），实测采集条数不变，单轮耗时 34s → 16s。
 - **本地清理别碰**：`Default/IndexedDB`、`Local Storage`（聊天记录与登录态）、`.doubao/agent_mode/workspace`（技能与经验）、`hot_fix`、`coding`。
 - **网页端无归档列表入口**：`/chat/archive` 打不开；想看/恢复归档会话只能用本仓库的 `restore --list`，或直访 `https://www.doubao.com/chat/<会话id>`。
