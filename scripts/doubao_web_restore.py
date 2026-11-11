@@ -31,11 +31,11 @@ from datetime import datetime
 from pathlib import Path
 
 HOME = Path.home()
-APP_DIR = Path(os.environ.get("DOUBAO_APP_DIR") or (HOME / "Library/Application Support/Doubao"))
-LOG_DIR = HOME / "Library/Logs/doubao-chat-cleaner"
+APP_DIR = HOME / "Library/Application Support/Doubao"
+LOG_DIR = HOME / "Library/Logs/doubao-cleaner"
 LOG = LOG_DIR / "web_restore.log"
-KEEP_FILE = HOME / ".local/share/doubao-chat-cleaner/web_keep.json"
-STATE_FILE = HOME / ".local/share/doubao-chat-cleaner/web_archived.json"
+KEEP_FILE = HOME / ".local/share/doubao-cleaner/web_keep.json"
+STATE_FILE = HOME / ".local/share/doubao-cleaner/web_archived.json"
 
 API_QS = ("version_code=20800&language=zh&device_platform=web&doubao_device_platform=web"
           "&aid=497858&real_aid=497858&pkg_type=release_version&region=CN&sys_region=CN"

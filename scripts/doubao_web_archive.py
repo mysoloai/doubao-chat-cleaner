@@ -4,15 +4,15 @@
 年龄判定顺序（越靠前越可信）：
   1) 本地工作区 `.../agent_mode/workspace/.sessions/<会话id>` 的目录修改时间
   2) 归档区 `_archive/sessions-*/manifest.tsv` 里的 `last_modified`
-  3) 两者都没有 → 视为「未知年龄」，**默认一并归档**（网页端新建的会话本来就没本地痕迹），--keep-unknown 才保留
+  3) 两者都没有 → 视为「未知年龄」，**默认一并归档**（用户已确认口径），--keep-unknown 才保留
 
 依赖 opencli 2.x + 已登录 doubao.com 的 Chrome/Browser Bridge。
 
 用法：
   python3 scripts/doubao_web_archive.py --dry-run          # 只统计，不动手
-  python3 scripts/doubao_web_archive.py                    # 归档 30 天前的会话
-  python3 scripts/doubao_web_archive.py --days 90
-  python3 scripts/doubao_web_archive.py --keep-unknown     # 保留年龄未知的
+  python3 scripts/doubao_web_archive.py                    # 归档 7 天前的会话
+  python3 scripts/doubao_web_archive.py --days 30
+  python3 scripts/doubao_web_archive.py --keep-unknown   # 保留年龄未知的
 """
 from __future__ import annotations
 
@@ -28,13 +28,13 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-APP_DIR = Path(os.environ.get("DOUBAO_APP_DIR") or (Path.home() / "Library/Application Support/Doubao"))
+APP_DIR = Path.home() / "Library/Application Support/Doubao"
 SESS_DIR = APP_DIR / "Default/.doubao/agent_mode/workspace/.sessions"
 ARCH_DIR = APP_DIR / "_archive"
-LOG_DIR = Path.home() / "Library/Logs/doubao-chat-cleaner"
+LOG_DIR = Path.home() / "Library/Logs/doubao-cleaner"
 LOG = LOG_DIR / "web_archive.log"
-STATE_FILE = Path.home() / ".local/share/doubao-chat-cleaner/web_archived.json"
-KEEP_FILE = Path.home() / ".local/share/doubao-chat-cleaner/web_keep.json"
+STATE_FILE = Path.home() / ".local/share/doubao-cleaner/web_archived.json"
+KEEP_FILE = Path.home() / ".local/share/doubao-cleaner/web_keep.json"
 
 BATCH_SIZE = 25
 MAX_EXPAND_ROUNDS = 3
@@ -210,7 +210,7 @@ def api_archive(bw: Browser, ids: list[str]) -> set[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="归档网页版豆包 N 天前的历史会话（年龄未知的一并归档）")
-    ap.add_argument("--days", type=int, default=30, help="只归档这个天数之前活跃的会话（默认 30）")
+    ap.add_argument("--days", type=int, default=7, help="只归档这个天数之前活跃的会话（默认 7）")
     ap.add_argument("--dry-run", action="store_true", help="只统计不归档")
     ap.add_argument("--no-ui-fallback", action="store_true",
                     help="不改用界面菜单兜底归档（默认会兜底接口假成功的会话）")

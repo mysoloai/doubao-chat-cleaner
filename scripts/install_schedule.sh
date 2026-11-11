@@ -1,65 +1,117 @@
 #!/usr/bin/env bash
-# 安装每日定时清理（macOS launchd）
-# 用法:
-#   bash scripts/install_schedule.sh --hour 4 --minute 10
-#   bash scripts/install_schedule.sh --status
-#   bash scripts/install_schedule.sh --run-now
-#   bash scripts/install_schedule.sh --uninstall
+# 安装 / 卸载 豆包定时清理（launchd LaunchAgent，清理后自动重启豆包）
 set -euo pipefail
 
-LABEL="com.doubao-chat-cleaner"
-LA_DIR="$HOME/Library/LaunchAgents"
-PLIST="$LA_DIR/$LABEL.plist"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="$HOME/Library/Logs/doubao-chat-cleaner"
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALL_DIR="${HOME}/.local/share/doubao-cleaner"
+LA_DIR="${HOME}/Library/LaunchAgents"
+CLEANER_LABEL="com.hust.doubao-cleaner"
+RESTART_LABEL="com.hust.doubao-restart"
+UID_NUM="$(id -u)"
+
 HOUR=4
 MINUTE=10
+ACTION="install"
 
-run_once() {
-  mkdir -p "$LOG_DIR"
-  bash "$HERE/scripts/clean_local.sh" >>"$LOG_DIR/clean.log" 2>&1 || true
-  if command -v python3 >/dev/null 2>&1; then
-    python3 "$HERE/scripts/doubao_web_archive.py" --days 30 >>"$LOG_DIR/web_archive.log" 2>&1 || true
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --hour) HOUR="$2"; shift 2 ;;
+    --minute) MINUTE="$2"; shift 2 ;;
+    --uninstall) ACTION="uninstall"; shift ;;
+    --status) ACTION="status"; shift ;;
+    --run-now) ACTION="run-now"; shift ;;
+    -h|--help)
+      echo "用法: install_schedule.sh [--hour 4] [--minute 10] | --uninstall | --status | --run-now"
+      exit 0 ;;
+    *) echo "未知参数: $1" >&2; exit 2 ;;
+  esac
+done
+
+status() {
+  echo "== LaunchAgents =="
+  launchctl list 2>/dev/null | grep -E "doubao-(cleaner|restart)" || echo "未安装"
+  [[ -f "${LA_DIR}/${CLEANER_LABEL}.plist" ]] && echo "plist: ${LA_DIR}/${CLEANER_LABEL}.plist"
 }
 
-case "${1:-}" in
-  --status)
-    launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | head -6 || echo "未安装定时任务"
-    [[ -f "$PLIST" ]] && echo "plist: $PLIST"
-    exit 0 ;;
-  --uninstall)
-    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-    rm -f "$PLIST"
-    echo "已卸载定时任务"; exit 0 ;;
-  --run-now)
-    run_once; echo "已立即执行一次，日志见 $LOG_DIR"; exit 0 ;;
-  --hour) HOUR="${2:?}" ;;
-  --minute) MINUTE="${2:?}" ;;
-esac
+uninstall() {
+  launchctl bootout "gui/${UID_NUM}/${CLEANER_LABEL}" >/dev/null 2>&1 || true
+  launchctl bootout "gui/${UID_NUM}/${RESTART_LABEL}" >/dev/null 2>&1 || true
+  rm -f "${LA_DIR}/${CLEANER_LABEL}.plist" "${LA_DIR}/${RESTART_LABEL}.plist"
+  echo "已移除定时清理任务（脚本目录 ${INSTALL_DIR} 保留，可手动执行）"
+}
 
-mkdir -p "$LA_DIR" "$LOG_DIR"
-cat > "$PLIST" <<EOF
+run_now() {
+  launchctl kickstart -k "gui/${UID_NUM}/${CLEANER_LABEL}"
+  echo "已触发一次清理（含重启），日志: ${HOME}/Library/Logs/doubao-cleaner/clean.log"
+}
+
+install() {
+  mkdir -p "$INSTALL_DIR" "$LA_DIR"
+  cp "${SKILL_DIR}/scripts/doubao_clean.sh" "${INSTALL_DIR}/"
+  cp "${SKILL_DIR}/scripts/doubao_restart.sh" "${INSTALL_DIR}/"
+  cp "${SKILL_DIR}/scripts/doubao_web_archive.py" "${INSTALL_DIR}/"
+  chmod +x "${INSTALL_DIR}/doubao_clean.sh" "${INSTALL_DIR}/doubao_restart.sh" "${INSTALL_DIR}/doubao_web_archive.py"
+
+  # 先卸旧再装新（幂等）
+  launchctl bootout "gui/${UID_NUM}/${CLEANER_LABEL}" >/dev/null 2>&1 || true
+  launchctl bootout "gui/${UID_NUM}/${RESTART_LABEL}" >/dev/null 2>&1 || true
+
+  cat > "${LA_DIR}/${CLEANER_LABEL}.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>${LABEL}</string>
+  <key>Label</key><string>${CLEANER_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>-c</string>
-    <string>bash "${HERE}/scripts/clean_local.sh" >>"${LOG_DIR}/clean.log" 2>&1; /usr/bin/python3 "${HERE}/scripts/doubao_web_archive.py" --days 30 >>"${LOG_DIR}/web_archive.log" 2>&1 || true</string>
+    <string>${INSTALL_DIR}/doubao_clean.sh</string>
+    <string>--restart</string>
   </array>
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>${HOUR}</integer><key>Minute</key><integer>${MINUTE}</integer></dict>
-  <key>StandardOutPath</key><string>${LOG_DIR}/launchd.out</string>
-  <key>StandardErrorPath</key><string>${LOG_DIR}/launchd.err</string>
+  <dict>
+    <key>Hour</key><integer>${HOUR}</integer>
+    <key>Minute</key><integer>${MINUTE}</integer>
+  </dict>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>${HOME}/Library/Logs/doubao-cleaner/launchd.out</string>
+  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/doubao-cleaner/launchd.err</string>
+  <key>ProcessType</key><string>Background</string>
 </dict>
 </plist>
 EOF
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"
-echo "已安装：每天 ${HOUR}:$(printf '%02d' "$MINUTE") 清理 + 归档 30 天前会话（label ${LABEL}）"
-echo "查看状态: bash scripts/install_schedule.sh --status"
+  cat > "${LA_DIR}/${RESTART_LABEL}.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${RESTART_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>${INSTALL_DIR}/doubao_restart.sh</string>
+  </array>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>${HOME}/Library/Logs/doubao-cleaner/restart.out</string>
+  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/doubao-cleaner/restart.err</string>
+</dict>
+</plist>
+EOF
+
+  launchctl bootstrap "gui/${UID_NUM}" "${LA_DIR}/${CLEANER_LABEL}.plist" 2>/dev/null || \
+    launchctl load -w "${LA_DIR}/${CLEANER_LABEL}.plist"
+  launchctl bootstrap "gui/${UID_NUM}" "${LA_DIR}/${RESTART_LABEL}.plist" 2>/dev/null || \
+    launchctl load -w "${LA_DIR}/${RESTART_LABEL}.plist"
+
+  echo "已安装：每天 ${HOUR}:$(printf '%02d' "$MINUTE") 自动归档网页版 7 天前会话 + 清理 + 重启豆包"
+  echo "脚本目录: ${INSTALL_DIR}"
+  echo "日志: ${HOME}/Library/Logs/doubao-cleaner/clean.log"
+}
+
+case "$ACTION" in
+  install) install ;;
+  uninstall) uninstall ;;
+  status) status ;;
+  run-now) run_now ;;
+esac

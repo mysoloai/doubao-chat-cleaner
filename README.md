@@ -10,8 +10,8 @@
 
 | 能力 | 命令 | 说明 |
 |---|---|---|
-| 本地瘦身 | `bash scripts/clean_local.sh [--dry-run]` | 清 Python 沙箱缓存、滚动日志、Electron 缓存；旧会话工作区移到 `_archive/`（可回移） |
-| 归档历史会话 | `python3 scripts/doubao_web_archive.py [--dry-run]` | 默认归档 **30 天前**的会话；年龄未知的**默认一并归档**，要保留就加 `--keep-unknown` |
+| 一键清理 | `bash scripts/doubao_clean.sh [--dry-run]` | 本地瘦身（清 Python 沙箱缓存、滚动日志、Electron 缓存；旧会话工作区移到 `_archive/`，可回移）+ 网页版归档；`--no-web-archive` 只清本地，`--restart` 清理后委托 launchd 重启豆包 |
+| 归档历史会话 | `python3 scripts/doubao_web_archive.py [--dry-run]` | 默认归档 **7 天前**的会话；年龄未知的**默认一并归档**，要保留就加 `--keep-unknown` |
 | 归档到干净 | `bash scripts/doubao_web_archive_all.sh [天数]` | 反复下探直到侧栏只剩「最近 N 天内 + 当前会话」；每轮侧栏只露 ~10 条，单跑挖不到底 |
 | 撤销归档 | `python3 scripts/doubao_web_restore.py --project <项目名>` | 整项目恢复；`--conversation-id <id>` 单条恢复；`--list` 看各项目已归档条数 |
 | 每日定时 | `bash scripts/install_schedule.sh` | launchd 每日定时清理 + 归档（默认 04:10） |
@@ -49,7 +49,7 @@ opencli doctor                        # 关键：extensionConnected 必须是 tr
 git clone https://github.com/<you>/doubao-chat-cleaner.git && cd doubao-chat-cleaner
 bash scripts/install_deps.sh
 
-bash scripts/clean_local.sh --dry-run                  # 看能清多少
+bash scripts/doubao_clean.sh --dry-run                # 看能清多少、待归档多少
 python3 scripts/doubao_web_archive.py --dry-run        # 看会归档哪些会话
 python3 scripts/doubao_web_archive.py --days 30        # 真归档
 python3 scripts/doubao_web_restore.py --list           # 各项目已归档多少条
@@ -79,7 +79,7 @@ python3 scripts/doubao_web_restore.py --project newwork
 - **`extensionConnected: false`**：扩展没装/没连上 → 装扩展后 `opencli daemon restart`。
 - **归档了但侧栏还在**：极少数会话（系统通知类、老会话）接口返回 `success` 却不生效，属服务端行为。
 - **归档后找不到会话**：用 `doubao_web_restore.py --list` 查项目，或直接访问 `https://www.doubao.com/chat/<会话id>`（已归档会话仍可打开）。
-- **不想动网页端**：只跑 `clean_local.sh` 即可，两者互不依赖。
+- **不想动网页端**：跑 `doubao_clean.sh --no-web-archive` 即可，两者互不依赖。
 
 ## License
 

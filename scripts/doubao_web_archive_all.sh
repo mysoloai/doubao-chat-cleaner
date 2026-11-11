@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 # 反复调用 doubao_web_archive.py，直到网页版侧栏只剩「最近 N 天内 + 当前会话」为止。
-#
-# 为什么需要它：侧栏每轮只渲染约 10 条（其中约 6 条可归档），清掉后立刻补进更早的一页，
-# 单跑一次脚本永远挖不到底。本脚本按「无进展」判停机，可放心挂着跑。
-#
-# 用法：
-#   bash scripts/doubao_web_archive_all.sh            # 默认 30 天口径
-#   bash scripts/doubao_web_archive_all.sh 7          # 只归档 7 天前的
-#   bash scripts/doubao_web_archive_all.sh 7 400      # 第二参数 = 最大轮数
+# 每轮能看到的会话有限（通常 10 条左右，其中可归档 6 条），单次脚本跑不到底，需靠本驱动多轮下探。
 set -uo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DAYS="${1:-30}"
+DAYS="${1:-7}"
 MAX_PASSES="${2:-800}"
-LOG_DIR="$HOME/Library/Logs/doubao-chat-cleaner"
+LOG_DIR="$HOME/Library/Logs/doubao-cleaner"
 mkdir -p "$LOG_DIR"
 PROGRESS="$LOG_DIR/web_archive_progress.log"
-
 py="$(command -v python3 || echo /usr/bin/python3)"
 total=0
 for i in $(seq 1 "$MAX_PASSES"); do
@@ -32,12 +23,8 @@ for i in $(seq 1 "$MAX_PASSES"); do
     sleep 20
     out2="$("$py" "$SCRIPT_DIR/doubao_web_archive.py" --days "$DAYS" 2>&1)"
     ok2=$(printf '%s' "$out2" | grep -oE "成功 [0-9]+" | grep -oE "[0-9]+" | head -1)
-    [[ "${ok2:-0}" == "0" ]] && {
-      echo "STALL 复测仍为 0，停机（剩余 $n 条多为最近 N 天内的会话或系统通知）" >>"$PROGRESS"
-      break
-    }
+    [[ "${ok2:-0}" == "0" ]] && { echo "STALL 复测仍为 0，停机（剩余 $n 条可能是本周内会话或系统通知）" >>"$PROGRESS"; break; }
   fi
   sleep 1
 done
 echo "结束 total=$total" >>"$PROGRESS"
-echo "本次共归档 $total 条，进度：$PROGRESS"
